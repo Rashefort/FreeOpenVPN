@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 from collections import OrderedDict
 from queue import Queue
+import winreg
 import sys
 import os
 import re
@@ -14,38 +15,128 @@ from PyQt5 import QtGui
 from PyQt5 import QtSql
 
 
-PLAY = 101
+USER_AGENT = 'Mozilla/5.0 (compatible; RashBrowse 0.5; Syllable)'
+WORKER_PLAY = 101
 EXIT = 0
 
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+class Password(QtWidgets.QDialog):
+    def __init__(self, icon, parent=None):
+        QtWidgets.QDialog.__init__(self, parent)
+        self.setWindowTitle('Подтвердите пароль')
+        self.setFixedSize(362, 45)
+        self.setWindowIcon(icon)
+
+        self.box = QtWidgets.QHBoxLayout()
+
+        path = os.path.join(os.environ['TEMP'], 'captcha.png')
+        self.password = QtWidgets.QLabel()
+        self.password.setPixmap(QtGui.QPixmap(path))
+        self.box.addWidget(self.password)
+
+        self.lineEdit = QtWidgets.QLineEdit()
+        self.box.addWidget(self.lineEdit)
+
+        self.button = QtWidgets.QPushButton("&OK")
+        self.button.clicked.connect(self.accept)
+        self.box.addWidget(self.button)
+
+        self.setLayout(self.box)
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class Worker(QtCore.QThread):
-    signal = QtCore.pyqtSignal(bool)
+    signal = QtCore.pyqtSignal(str)
 
     def __init__(self, queue, comboBox, button, sound, parent=None):
         QtCore.QThread.__init__(self, parent)
+
+        self.browser = RoboBrowser(user_agent=USER_AGENT, parser='html.parser')
         self.queue = queue
         self.comboBox = comboBox
         self.button = button
         self.sound = sound
         self.url = None
 
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'SOFTWARE\\OpenVPN-GUI')
+            self.config = winreg.QueryValueEx(key, r'config_dir')[0]
+        except:
+            self.config = None
+
+        try:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\Tesseract-OCR')
+            path = winreg.QueryValueEx(key, r'Path')[0]
+            self.tesseract = os.path.join(path, 'tesseract.exe')
+        except:
+            self.tesseract = None
+
+
+    #---------------------------------------------------------------------------
+    def clearing_captcha(self):
+        pass
+
+
+    #---------------------------------------------------------------------------
+    def write_config(self, name):
+        with open(name, 'rt') as file:
+            name = os.path.join(self.config, name.split('\\')[-1])
+            country = name.split('\\')[-1].split('_')[0].lower()
+
+            with open(name, 'wt') as config:
+                for line in file.readlines():
+                    line = line.strip()
+                    if line == 'auth-user-pass':
+                        line = 'auth-user-pass %s.txt' % country
+
+                    config.write('%s\n' % line)
+
 
     #---------------------------------------------------------------------------
     def run(self):
+        captcha = 'https://www.freeopenvpn.org/logpass/'
+        tempdir = os.environ['TEMP']
+
         while True:
-            self.url = self.queue.get()
+            url = self.queue.get()
 
             if self.url != EXIT:
+                self.comboBox.setEnabled(False)
+                self.button.setEnabled(False)
 
+                self.browser.open(url)
 
+                if url.find('logpass') >= 0:
+                    path = os.path.join(tempdir, 'captcha.png')
 
-                self.sleep(10)
-                print('03. end -> sleep')
+                    html = str(self.browser.parsed)
+                    captcha += html.split('lnk = \'<img src="')[1].split('"')[0]
+                    image = self.browser.session.get(captcha, stream=True)
+                    with open(path, 'wb') as file:
+                        file.write(image.content)
 
-                self.comboBox.setEnabled(True)
-                self.button.setEnabled(True)
+                    country = url.split('/')[-1].split('.')[0].capitalize()
+                    url = 'https://www.freeopenvpn.org/ovpn/%s_freeopenvpn_%s.ovpn'
+
+                    for protocol in ('udp', 'tcp'):
+                        protocol = url % (country, protocol)
+                        config = self.browser.session.get(protocol, stream=True)
+
+                        name = os.path.join(tempdir, protocol.split('/')[-1])
+                        with open(name, 'wb') as file:
+                            file.write(config.content)
+
+                        self.write_config(name)
+
+                    self.clearing_captcha()
+
+                    self.signal.emit(name)
+
+                else:
+                    pass
 
             else:
                 break
@@ -69,8 +160,8 @@ class FreeOpenVPN(QtWidgets.QWidget):
             QtCore.Qt.WindowCloseButtonHint
         )
 
-        icon = QtGui.QIcon(os.path.join(tempdir, 'freeopenvpn.ico'))
-        self.setWindowIcon(icon)
+        self.icon = QtGui.QIcon(os.path.join(tempdir, 'freeopenvpn.ico'))
+        self.setWindowIcon(self.icon)
 
         self.setWindowTitle('FreeOpenVPN')
         self.setFixedSize(229, 29)
@@ -96,38 +187,39 @@ class FreeOpenVPN(QtWidgets.QWidget):
         self.button.setFont(font)
 
         self.thread = Worker(self.queue, self.comboBox, self.button, sound)
-        # self.thread.signal.connect(self.signal, QtCore.Qt.QueuedConnection)
+        self.thread.signal.connect(self.signal, QtCore.Qt.QueuedConnection)
         self.thread.start()
 
-        box = QtWidgets.QHBoxLayout()
-        box.setContentsMargins(2, 1, 1, 0)
-        box.addWidget(self.comboBox)
-        box.addWidget(self.button)
+        self.box = QtWidgets.QHBoxLayout()
+        self.box.setContentsMargins(2, 1, 1, 0)
+        self.box.addWidget(self.comboBox)
+        self.box.addWidget(self.button)
 
-        self.setLayout(box)
+        self.setLayout(self.box)
         self.show()
 
 
     #---------------------------------------------------------------------------
     def button_clicked(self):
-        self.comboBox.setEnabled(False)
-        self.button.setEnabled(False)
-        self.queue.put('test')
+        self.queue.put(servers[self.comboBox.currentText()])
 
 
     #---------------------------------------------------------------------------
-    # def signal(self, result):
-    #     print(result)
-    #     if result:
-    #         self.comboBox.setEnabled(True)
-    #         self.button.setEnabled(True)
+    def signal(self, name):
+        if name:
+            password = Password(self.icon, self)
+            password.exec_()
+
+            print(password.lineEdit.text())
+
+        self.comboBox.setEnabled(True)
+        self.button.setEnabled(True)
 
 
     #---------------------------------------------------------------------------
     def closeEvent(self, event):
         if self.button.isEnabled():
             self.queue.put(EXIT)
-
             QtWidgets.QWidget.closeEvent(self, event)
 
         else:
