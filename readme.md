@@ -1,3 +1,3 @@
-не готово
+РЅРµ РіРѕС‚РѕРІРѕ
 ----------
 https://github.com/tesseract-ocr/tesseract/wiki
