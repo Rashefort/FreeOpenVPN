@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 from collections import OrderedDict
 from queue import Queue
+import subprocess
 import winreg
 import sys
 import os
@@ -29,6 +30,10 @@ class Password(QtWidgets.QDialog):
         self.setFixedSize(362, 45)
         self.setWindowIcon(icon)
 
+        tempdir = os.path.join(os.environ['TEMP'], 'captcha.txt')
+        with open(tempdir, 'rt') as file:
+            password = file.read().strip()
+
         self.box = QtWidgets.QHBoxLayout()
 
         path = os.path.join(os.environ['TEMP'], 'captcha.png')
@@ -37,6 +42,7 @@ class Password(QtWidgets.QDialog):
         self.box.addWidget(self.password)
 
         self.lineEdit = QtWidgets.QLineEdit()
+        self.lineEdit.setText(password)
         self.box.addWidget(self.lineEdit)
 
         self.button = QtWidgets.QPushButton("&OK")
@@ -69,8 +75,7 @@ class Worker(QtCore.QThread):
 
         try:
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\Tesseract-OCR')
-            path = winreg.QueryValueEx(key, r'Path')[0]
-            self.tesseract = os.path.join(path, 'tesseract.exe')
+            self.tesseract = winreg.QueryValueEx(key, r'Path')[0]
         except:
             self.tesseract = None
 
@@ -97,8 +102,10 @@ class Worker(QtCore.QThread):
 
     #---------------------------------------------------------------------------
     def run(self):
-        captcha = 'https://www.freeopenvpn.org/logpass/'
         tempdir = os.environ['TEMP']
+        captcha = 'https://www.freeopenvpn.org/logpass/'
+        png = os.path.join(tempdir, 'captcha.png')
+        txt = png.split('.')[0]
 
         while True:
             url = self.queue.get()
@@ -110,13 +117,17 @@ class Worker(QtCore.QThread):
                 self.browser.open(url)
 
                 if url.find('logpass') >= 0:
-                    path = os.path.join(tempdir, 'captcha.png')
-
                     html = str(self.browser.parsed)
                     captcha += html.split('lnk = \'<img src="')[1].split('"')[0]
                     image = self.browser.session.get(captcha, stream=True)
-                    with open(path, 'wb') as file:
+                    with open(png, 'wb') as file:
                         file.write(image.content)
+
+                    if self.tesseract:
+                        current = os.getcwd()
+                        os.chdir(self.tesseract)
+                        subprocess.call(['tesseract.exe', png, txt])
+                        os.chdir(current)
 
                     country = url.split('/')[-1].split('.')[0].capitalize()
                     url = 'https://www.freeopenvpn.org/ovpn/%s_freeopenvpn_%s.ovpn'
@@ -133,7 +144,8 @@ class Worker(QtCore.QThread):
 
                     self.clearing_captcha()
 
-                    self.signal.emit(name)
+                    name = name.split('\\')[-1].split('_')[0].lower()
+                    self.signal.emit(os.path.join(self.config, name))
 
                 else:
                     pass
@@ -210,7 +222,9 @@ class FreeOpenVPN(QtWidgets.QWidget):
             password = Password(self.icon, self)
             password.exec_()
 
-            print(password.lineEdit.text())
+            password = password.lineEdit.text()
+            with open('%s.txt' % name, 'wt') as file:
+                file.write('freeopenvpn\n%s' % password)
 
         self.comboBox.setEnabled(True)
         self.button.setEnabled(True)
