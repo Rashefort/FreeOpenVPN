@@ -4,6 +4,7 @@ from collections import OrderedDict
 from queue import Queue
 import subprocess
 import winreg
+import png
 import sys
 import os
 import re
@@ -82,6 +83,36 @@ class Worker(QtCore.QThread):
 
     #---------------------------------------------------------------------------
     def clearing_captcha(self):
+        # captcha = os.path.join(os.environ['TEMP'], 'captcha.png')
+        # WHITE = [255, 255, 255]
+        # BLACK = [0, 0, 0]
+        # LIMIT = 75
+
+        # file = png.Reader(captcha)
+        # image = list(map(list, file.read()[2]))
+        # colors = dict()
+
+        # for row in range(len(image)):
+        #     for col in range(0, len(image[0]), 3):
+        #         try:
+        #             colors[tuple(image[row][col: col+3])] += 1
+        #         except:
+        #             colors[tuple(image[row][col: col+3])] = 1
+
+        # colors.pop((255, 255, 255))
+
+        # for row in range(len(image)):
+        #     for col in range(0, len(image[0]), 3):
+        #         key = image[row][col: col+3]
+        #         if key != WHITE:
+        #             color = image[row][col: col+3]
+
+        #             if colors[tuple(key)] >= LIMIT:
+        #                 image[row][col: col+3] = WHITE
+
+        # with open(captcha, 'wb') as file:
+        #     writer = png.Writer(len(image[0]) // 3, len(image))
+        #     writer.write(file, image)
         pass
 
 
@@ -123,11 +154,11 @@ class Worker(QtCore.QThread):
                     with open(png, 'wb') as file:
                         file.write(image.content)
 
-                    if self.tesseract:
-                        current = os.getcwd()
-                        os.chdir(self.tesseract)
-                        subprocess.call(['tesseract.exe', png, txt])
-                        os.chdir(current)
+                    # if self.tesseract:
+                    #     current = os.getcwd()
+                    #     os.chdir(self.tesseract)
+                    #     subprocess.call(['tesseract.exe', png, txt])
+                    #     os.chdir(current)
 
                     country = url.split('/')[-1].split('.')[0].capitalize()
                     url = 'https://www.freeopenvpn.org/ovpn/%s_freeopenvpn_%s.ovpn'
