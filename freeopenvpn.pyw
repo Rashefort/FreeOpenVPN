@@ -32,7 +32,7 @@ class Password(QtWidgets.QDialog):
 
         tempdir = os.path.join(os.environ['TEMP'], 'captcha.txt')
         with open(tempdir, 'rt') as file:
-            password = file.read().strip()
+            password = file.read().strip().replace(' ', '')
 
         self.box = QtWidgets.QHBoxLayout()
 
@@ -71,7 +71,7 @@ class Worker(QtCore.QThread):
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'SOFTWARE\\OpenVPN-GUI')
             self.config = winreg.QueryValueEx(key, r'config_dir')[0]
         except:
-            self.config = None
+            QtWidgets.QMessageBox.critical(None, 'Ошибка', 'FreeOpenVPN не установлен.')
 
         try:
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\Tesseract-OCR')
@@ -237,10 +237,8 @@ class FreeOpenVPN(QtWidgets.QWidget):
             QtWidgets.QWidget.closeEvent(self, event)
 
         else:
-            QtWidgets.QMessageBox.warning(self,
-                'Предупреждение', 'Дождитесь конца загрузки файлов.',
-                defaultButton=QtWidgets.QMessageBox.Ok)
-
+            text = 'Дождитесь конца загрузки файлов.'
+            QtWidgets.QMessageBox.warning(self, 'Предупреждение', text)
             event.ignore()
 
 
@@ -265,9 +263,8 @@ def datebase():
                 file.write(query.value('file'))
                 query.next()
     else:
-        text = 'Файл freeopenvpn.dta отсутствует или поврежден.'
-        QtWidgets.QMessageBox.critical(None, 'Ошибка', text,
-            defaultButton=QtWidgets.QMessageBox.Ok)
+        text = 'Файл freeopenvpn.db отсутствует или поврежден.'
+        QtWidgets.QMessageBox.critical(None, 'Ошибка', text)
         raise SystemExit
 
     servers = OrderedDict()
@@ -278,9 +275,8 @@ def datebase():
             servers[query.value('name')] = query.value('url')
             query.next()
     else:
-        text = 'Файл freeopenvpn.dta отсутствует или поврежден.'
-        QtWidgets.QMessageBox.critical(None, 'Ошибка', text,
-            defaultButton=QtWidgets.QMessageBox.Ok)
+        text = 'Файл freeopenvpn.db отсутствует или поврежден.'
+        QtWidgets.QMessageBox.critical(None, 'Ошибка', text)
         raise SystemExit
 
     more = dict()
@@ -291,9 +287,8 @@ def datebase():
             more[query.value('name')] = query.value('value')
             query.next()
     else:
-        text = 'Файл freeopenvpn.dta отсутствует или поврежден.'
-        QtWidgets.QMessageBox.critical(None, 'Ошибка', text,
-            defaultButton=QtWidgets.QMessageBox.Ok)
+        text = 'Файл freeopenvpn.db отсутствует или поврежден.'
+        QtWidgets.QMessageBox.critical(None, 'Ошибка', text)
         raise SystemExit
 
     db.close()
