@@ -4,7 +4,6 @@ from collections import OrderedDict
 from queue import Queue
 import subprocess
 import winreg
-import png
 import sys
 import os
 import re
@@ -15,10 +14,12 @@ from PyQt5 import QtWidgets
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5 import QtSql
+import png
 
 
 USER_AGENT = 'Mozilla/5.0 (compatible; RashBrowse 0.5; Syllable)'
-WORKER_PLAY = 101
+SOUND_PLAY = 'play'
+SOUND_STOP = 'stop'
 EXIT = 0
 
 
@@ -68,12 +69,6 @@ class Worker(QtCore.QThread):
         self.button = button
         self.sound = sound
         self.url = None
-
-        self.sound = QtMultimedia.QSoundEffect()
-        file = os.path.join(os.environ['TEMP'], 'v90.wav')
-        wav = QtCore.QUrl.fromLocalFile(file)
-        self.sound.setSource(wav)
-
 
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'SOFTWARE\\OpenVPN-GUI')
@@ -148,7 +143,7 @@ class Worker(QtCore.QThread):
             url = self.queue.get()
 
             if self.url != EXIT:
-                self.sound.play()
+                self.signal.emit(SOUND_PLAY)
 
                 self.browser.open(url)
                 if url.find('logpass') >= 0:
@@ -177,9 +172,9 @@ class Worker(QtCore.QThread):
                         self.write_config(name)
 
                     name = name.split('\\')[-1].split('_')[0].lower()
-                    self.signal.emit(os.path.join(self.config, name))
 
-                self.sound.stop()
+                    self.signal.emit(SOUND_STOP)
+                    self.signal.emit(os.path.join(self.config, name))
 
             else:
                 break
@@ -238,6 +233,11 @@ class FreeOpenVPN(QtWidgets.QWidget):
         self.box.addWidget(self.comboBox)
         self.box.addWidget(self.button)
 
+        self.sound = QtMultimedia.QSoundEffect()
+        file = os.path.join(tempdir, 'v90.wav')
+        wav = QtCore.QUrl.fromLocalFile(file)
+        self.sound.setSource(wav)
+
         self.setLayout(self.box)
         self.show()
 
@@ -251,7 +251,13 @@ class FreeOpenVPN(QtWidgets.QWidget):
 
     #---------------------------------------------------------------------------
     def signal(self, name):
-        if name:
+        if name == SOUND_PLAY:
+            self.sound.play()
+
+        elif name == SOUND_STOP:
+            self.sound.stop()
+
+        else:
             password = Password(self.icon, self)
             password.exec_()
 
@@ -259,8 +265,8 @@ class FreeOpenVPN(QtWidgets.QWidget):
             with open('%s.txt' % name, 'wt') as file:
                 file.write('freeopenvpn\n%s' % password)
 
-        self.comboBox.setEnabled(True)
-        self.button.setEnabled(True)
+            self.comboBox.setEnabled(True)
+            self.button.setEnabled(True)
 
 
     #---------------------------------------------------------------------------
