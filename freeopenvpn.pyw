@@ -1,6 +1,8 @@
 # tested on Win 7 32 bit, python 3.6.3
 # -*- coding: UTF-8 -*-
 from collections import OrderedDict
+from subprocess import Popen
+from subprocess import PIPE
 from queue import Queue
 import subprocess
 import winreg
@@ -22,6 +24,26 @@ WORKER_PLAY = 101
 EXIT = 0
 
 
+import logging
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+fh = logging.FileHandler('freeopenvpn.log')
+fh.setLevel(logging.DEBUG)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+# logger.debug('logger')
+
+
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 class Password(QtWidgets.QDialog):
@@ -32,6 +54,7 @@ class Password(QtWidgets.QDialog):
         self.setWindowIcon(icon)
 
         tempdir = os.path.join(os.environ['TEMP'], 'captcha.txt')
+
         with open(tempdir, 'rt') as file:
             password = file.read().strip().replace(' ', '')
 
@@ -61,7 +84,6 @@ class Worker(QtCore.QThread):
     def __init__(self, queue, comboBox, button, sound, parent=None):
         QtCore.QThread.__init__(self, parent)
 
-        self.browser = RoboBrowser(user_agent=USER_AGENT, parser='html.parser')
         self.queue = queue
         self.comboBox = comboBox
         self.button = button
@@ -83,37 +105,37 @@ class Worker(QtCore.QThread):
 
     #---------------------------------------------------------------------------
     def clearing_captcha(self):
-        # captcha = os.path.join(os.environ['TEMP'], 'captcha.png')
-        # WHITE = [255, 255, 255]
-        # BLACK = [0, 0, 0]
-        # LIMIT = 75
+        captcha = os.path.join(os.environ['TEMP'], 'captcha.png')
+        WHITE = [255, 255, 255]
+        BLACK = [0, 0, 0]
+        LIMIT = 75
 
-        # file = png.Reader(captcha)
-        # image = list(map(list, file.read()[2]))
-        # colors = dict()
+        file = png.Reader(captcha)
+        image = list(map(list, file.read()[2]))
+        colors = dict()
 
-        # for row in range(len(image)):
-        #     for col in range(0, len(image[0]), 3):
-        #         try:
-        #             colors[tuple(image[row][col: col+3])] += 1
-        #         except:
-        #             colors[tuple(image[row][col: col+3])] = 1
+        for row in range(len(image)):
+            for col in range(0, len(image[0]), 3):
+                try:
+                    colors[tuple(image[row][col: col+3])] += 1
+                except:
+                    colors[tuple(image[row][col: col+3])] = 1
 
-        # colors.pop((255, 255, 255))
+        if len(colors) > 1:
+            colors.pop((255, 255, 255))
 
-        # for row in range(len(image)):
-        #     for col in range(0, len(image[0]), 3):
-        #         key = image[row][col: col+3]
-        #         if key != WHITE:
-        #             color = image[row][col: col+3]
+            for row in range(len(image)):
+                for col in range(0, len(image[0]), 3):
+                    key = image[row][col: col+3]
+                    if key != WHITE:
+                        color = image[row][col: col+3]
 
-        #             if colors[tuple(key)] >= LIMIT:
-        #                 image[row][col: col+3] = WHITE
+                        if colors[tuple(key)] >= LIMIT:
+                            image[row][col: col+3] = WHITE
 
-        # with open(captcha, 'wb') as file:
-        #     writer = png.Writer(len(image[0]) // 3, len(image))
-        #     writer.write(file, image)
-        pass
+        with open(captcha, 'wb') as file:
+            writer = png.Writer(len(image[0]) // 3, len(image))
+            writer.write(file, image)
 
 
     #---------------------------------------------------------------------------
@@ -134,7 +156,6 @@ class Worker(QtCore.QThread):
     #---------------------------------------------------------------------------
     def run(self):
         tempdir = os.environ['TEMP']
-        captcha = 'https://www.freeopenvpn.org/logpass/'
         png = os.path.join(tempdir, 'captcha.png')
         txt = png.split('.')[0]
 
@@ -145,27 +166,29 @@ class Worker(QtCore.QThread):
                 self.comboBox.setEnabled(False)
                 self.button.setEnabled(False)
 
-                self.browser.open(url)
+                captcha = 'https://www.freeopenvpn.org/logpass/'
+                browser = RoboBrowser(user_agent=USER_AGENT, parser='html.parser')
+                browser.open(url)
 
                 if url.find('logpass') >= 0:
-                    html = str(self.browser.parsed)
+                    html = str(browser.parsed)
                     captcha += html.split('lnk = \'<img src="')[1].split('"')[0]
-                    image = self.browser.session.get(captcha, stream=True)
+                    image = browser.session.get(captcha, stream=True)
                     with open(png, 'wb') as file:
                         file.write(image.content)
 
-                    # if self.tesseract:
-                    #     current = os.getcwd()
-                    #     os.chdir(self.tesseract)
-                    #     subprocess.call(['tesseract.exe', png, txt])
-                    #     os.chdir(current)
+                    if self.tesseract:
+                        current = os.getcwd()
+                        os.chdir(self.tesseract)
+                        self.clearing_captcha()
+                        subprocess.call(['tesseract.exe', png, txt], shell=True)
 
                     country = url.split('/')[-1].split('.')[0].capitalize()
                     url = 'https://www.freeopenvpn.org/ovpn/%s_freeopenvpn_%s.ovpn'
 
                     for protocol in ('udp', 'tcp'):
                         protocol = url % (country, protocol)
-                        config = self.browser.session.get(protocol, stream=True)
+                        config = browser.session.get(protocol, stream=True)
 
                         name = os.path.join(tempdir, protocol.split('/')[-1])
                         with open(name, 'wb') as file:
@@ -173,13 +196,8 @@ class Worker(QtCore.QThread):
 
                         self.write_config(name)
 
-                    self.clearing_captcha()
-
                     name = name.split('\\')[-1].split('_')[0].lower()
                     self.signal.emit(os.path.join(self.config, name))
-
-                else:
-                    pass
 
             else:
                 break
