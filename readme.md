@@ -8,5 +8,5 @@
 с требованием ввести логин и пароль.
 
 ----------
-https://openvpn.net/index.php/open-source/downloads.html
+https://openvpn.net/index.php/open-source/downloads.html 
 https://github.com/tesseract-ocr/tesseract/wiki
